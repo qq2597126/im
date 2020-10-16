@@ -1,4 +1,4 @@
-package com.lcy;
+package com.lcy.common;
 
 import static org.junit.Assert.assertTrue;
 

@@ -11,7 +11,6 @@
 
     <modules>
         <module>im-base-common</module>
-        <module>im-base-common</module>
         <module>im-server</module>
     </modules>
 
@@ -85,6 +84,12 @@
 
         <hutool.version>5.4.4</hutool.version>
         <poi.version>4.1.2</poi.version>
+
+
+        <curator.version>5.1.0</curator.version>
+        <zookeeper.version>3.6.2</zookeeper.version>
+
+        <protobuf.version>3.13.0</protobuf.version>
 
 
     </properties>
@@ -279,6 +284,38 @@
             <version>${poi.version}</version>
         </dependency>
 
+
+        <!--ZK 相关操作客户端 curator -->
+        <dependency>
+            <groupId>org.apache.curator</groupId>
+            <artifactId>curator-recipes</artifactId>
+            <version>${curator.version}</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/org.apache.curator/curator-framework -->
+        <dependency>
+            <groupId>org.apache.curator</groupId>
+            <artifactId>curator-framework</artifactId>
+            <version>${curator.version}</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/org.apache.curator/curator-client -->
+        <dependency>
+            <groupId>org.apache.curator</groupId>
+            <artifactId>curator-client</artifactId>
+            <version>${curator.version}</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/org.apache.zookeeper/zookeeper -->
+        <dependency>
+            <groupId>org.apache.zookeeper</groupId>
+            <artifactId>zookeeper</artifactId>
+            <version>${zookeeper.version}</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/com.google.protobuf/protobuf-java -->
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <version>${protobuf.version}</version>
+        </dependency>
 
     </dependencies>
     <build>
