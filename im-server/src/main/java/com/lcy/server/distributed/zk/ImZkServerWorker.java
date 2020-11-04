@@ -2,8 +2,9 @@ package com.lcy.server.distributed.zk;
 
 import com.alibaba.fastjson.JSON;
 import com.lcy.common.constant.Constant;
-import com.lcy.server.distributed.AbstractServerWorker;
+import com.lcy.common.utils.StringUtils;
 import com.lcy.common.zk.ZKClient;
+import com.lcy.server.distributed.AbstractServerWorker;
 
 public class ImZkServerWorker extends AbstractServerWorker {
 
@@ -24,22 +25,26 @@ public class ImZkServerWorker extends AbstractServerWorker {
     //初始化节点信息
     public void init(){
         //创建路径
-
-        ZKClient.instance.createNode();
+        ZKClient.getIns().createNode(Constant.ImServerConstants.MANAGE_PATH);
         //创建节点
         try {
-            byte[] payload = JSON.toJSONBytes(serverNode);
+
             //数据写入
-            pathRegistered = ZKClient.instance.createEphemeralSeqNode(Constant);
-            //为node 设置id
-            serverNode.setId(getServerId());
+            pathRegistered =  ZKClient.getIns().createEphemeralSeqNode(Constant.ImServerConstants.PATH_PREFIX,JSON.toJSONBytes(serverNode));
+
+            //获取ID
+            long nodeId = StringUtils.getIdByPath(pathRegistered);
+
+            //更新节点数据
+            serverNode.setId(nodeId);
+
+            //更新节点数据
+            ZKClient.getIns().getClient().setData().forPath(pathRegistered,JSON.toJSONBytes(serverNode));
 
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
-
-
     /**
      * 增加负载，表示有用户登录成功
      *
@@ -51,11 +56,11 @@ public class ImZkServerWorker extends AbstractServerWorker {
             throw new RuntimeException("还没有设置Node 节点");
         }
         // 增加负载：增加负载，并写回zookeeper
+        serverNode.incBalance();
         while (true) {
             try {
-                serverNode.incBalance();
                 byte[] payload = JSON.toJSONBytes(serverNode);
-                ZKClient.instance.getClient().setData().forPath(pathRegistered,payload);
+                ZKClient.getIns().getClient().setData().forPath(pathRegistered,payload);
                 return true;
             } catch (Exception e) {
                 return false;
@@ -79,7 +84,7 @@ public class ImZkServerWorker extends AbstractServerWorker {
                 serverNode.decrementBalance();
 
                 byte[] payload = JSON.toJSONBytes(serverNode);
-                ZKClient.instance.getClient().setData().forPath(pathRegistered, payload);
+                ZKClient.getIns().getClient().setData().forPath(pathRegistered, payload);
                 return true;
             } catch (Exception e) {
                 return false;
@@ -91,7 +96,7 @@ public class ImZkServerWorker extends AbstractServerWorker {
 
     @Override
     public Long getServerId() {
-        return getIdByPath(pathRegistered);
+        return StringUtils.getIdByPath(pathRegistered);
     }
 
     /**
@@ -100,22 +105,5 @@ public class ImZkServerWorker extends AbstractServerWorker {
      * @return 编号
      * @param path  路径
      */
-    public long getIdByPath(String path) {
-        String sid = null;
-        if (null == path) {
-            throw new RuntimeException("节点路径有误");
-        }
-        int index = path.lastIndexOf(ImServerConstants.PATH_PREFIX);
-        if (index >= 0) {
-            index += ImServerConstants.PATH_PREFIX.length();
-            sid = index <= path.length() ? path.substring(index) : null;
-        }
 
-        if (null == sid) {
-            throw new RuntimeException("节点ID获取失败");
-        }
-
-        return Long.parseLong(sid);
-
-    }
 }

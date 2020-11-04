@@ -1,5 +1,7 @@
 package com.lcy.server.session;
 
+import com.lcy.common.bean.bo.User;
+import com.lcy.common.session.ServerSession;
 import com.lcy.server.distributed.ImServerNode;
 import com.lcy.server.distributed.WorkerReSender;
 import com.lcy.server.distributed.WorkerRouter;
@@ -19,6 +21,13 @@ public class RemoteSession implements ServerSession, Serializable {
 
     }
 
+    public RemoteSession(String userId, String sessionId, ImServerNode imServerNode) {
+        this.userId = userId;
+        this.sessionId = sessionId;
+        this.imServerNode = imServerNode;
+    }
+
+
     @Override
     public void writeAndFlush(Object pkg) {
         long nodeId = imServerNode.getId();
@@ -28,12 +37,7 @@ public class RemoteSession implements ServerSession, Serializable {
         workerReSender.writeAndFlush(pkg);
     }
     @Override
-    public String getSessionId() {
+    public User getUser() {
         return null;
-    }
-
-    @Override
-    public boolean isValid() {
-        return valid;
     }
 }

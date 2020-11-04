@@ -1,13 +1,14 @@
 package com.lcy.common.zk;
 
+import com.lcy.common.config.ZkConfig;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.api.ACLBackgroundPathAndBytesable;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.curator.utils.CloseableUtils;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.data.Stat;
-import org.springframework.beans.factory.annotation.Value;
 
 import java.io.UnsupportedEncodingException;
 
@@ -16,26 +17,16 @@ import java.io.UnsupportedEncodingException;
 public class ZKClient {
 
     private CuratorFramework client;
-    //Zk集群地址
-    @Value("zk.address:127.0.0.1")
-    private String zkAddress;
-    //超时时间,单位毫秒
-    @Value("zk.baseSleepTimeMs:1000")
-    private Integer baseSleepTimeMs;
-    @Value("zk.maxRetries:3")
-    private Integer maxRetries;
-    //连接超时
-    @Value("zk.connectionTimeoutMs")
-    private Integer connectionTimeoutMs;
-    //session 超时
-    @Value("zk.sessionTimeoutMs")
-    private Integer sessionTimeoutMs;
 
-    public static ZKClient instance = null;
 
-    static {
-        instance = new ZKClient();
-        instance.init();
+    private static  ZKClient instance = null;
+
+    public static ZKClient getIns(){
+        if(instance == null){
+            instance = new ZKClient();
+            instance.init();
+        }
+        return instance;
     }
 
     private void  init(){
@@ -44,8 +35,8 @@ public class ZKClient {
         }
         //创建客户端
         ExponentialBackoffRetry retryPolicy =
-                new ExponentialBackoffRetry(baseSleepTimeMs, maxRetries);
-        client = ClientFactory.createWithOptions(zkAddress,retryPolicy,connectionTimeoutMs,sessionTimeoutMs);
+                new ExponentialBackoffRetry(ZkConfig.baseSleepTimeMs, ZkConfig.maxRetries);
+        client = ClientFactory.createWithOptions(ZkConfig.zkAddress,retryPolicy,ZkConfig.connectionTimeoutMs,ZkConfig.sessionTimeoutMs);
         //启动客户端实例,连接服务器
         client.start();
     }
@@ -166,15 +157,18 @@ public class ZKClient {
     /**
      * 创建 临时 顺序 节点
      */
-    public String createEphemeralSeqNode(String srcpath) {
+    public String createEphemeralSeqNode(String srcpath,byte[] data) {
         try {
-
+            String path = null;
             // 创建一个 ZNode 节点
-            String path = client.create()
+            ACLBackgroundPathAndBytesable<String> mode = client.create()
                     .creatingParentsIfNeeded()
-                    .withMode(CreateMode.EPHEMERAL_SEQUENTIAL)
-                    .forPath(srcpath);
-
+                    .withMode(CreateMode.EPHEMERAL_SEQUENTIAL);
+            if(data != null && data.length > 0 ){
+                path = mode.forPath(srcpath,data);
+            }else{
+                path = mode.forPath(srcpath);
+            }
             return path;
 
         } catch (Exception e) {

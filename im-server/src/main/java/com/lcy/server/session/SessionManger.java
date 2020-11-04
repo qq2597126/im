@@ -1,37 +1,55 @@
 package com.lcy.server.session;
 
+import com.alibaba.fastjson.JSON;
 import com.lcy.common.bean.bo.User;
 import com.lcy.common.bean.msg.Notification;
+import com.lcy.common.bean.msg.ProtoMsg;
+import com.lcy.common.session.ServerSession;
+import com.lcy.server.builder.NotificationBuilder;
+import com.lcy.server.distributed.ImServerNode;
+import com.lcy.server.distributed.OnlineCounter;
 import com.lcy.server.distributed.WorkerRouter;
 import com.lcy.server.distributed.zk.ImZkServerWorker;
+import com.lcy.server.redis.UserSessionsDAO;
 import io.netty.channel.ChannelHandlerContext;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Data
 @Slf4j
+@Component
 public class SessionManger {
 
 
 
     private static SessionManger singleInstance = null;
 
-    /*本地会话集合*/
+    /*本地会话集合 sessionId*/
     private ConcurrentHashMap<String, LocalSession> localSessionMap = new ConcurrentHashMap<>();
 
-    /*本地用户集合*/
+    /*本地用户集合 uid*/
     private ConcurrentHashMap<String, UserSessions> sessionsLocalCache = new ConcurrentHashMap();
 
-    /*远程会话集合*/
+    /*远程会话集合 session*/
     private ConcurrentHashMap<String, RemoteSession> remoteSessionMap = new ConcurrentHashMap();
+
+
 
     public static SessionManger inst() {
         return singleInstance;
     }
+
+    @Autowired
+    public UserSessionsDAO userSessionsDAO;
+    @Autowired
+    public OnlineCounter onlineCounter;
 
     public static void setSingleInstance(SessionManger singleInstance) {
         SessionManger.singleInstance = singleInstance;
@@ -43,23 +61,22 @@ public class SessionManger {
     public void addLocalSession(LocalSession session) {
 
         String sessionId = session.getSessionId();
-
         localSessionMap.put(sessionId, session);
-
-
         String uid = session.getUser().getUid();
 
-        /*//增加用户数
-        OnlineCounter.getInst().increment();
-        log.info("本地session增加：{},  在线总数:{} ",
-                JsonUtil.pojoToJson(session.getUser()),
-                OnlineCounter.getInst().getCurValue());*/
-
+        //增加用户数
         ImZkServerWorker.getInst().incBalance();
 
 
+        log.info("本地session增加：{},  当前节点在线总数:{} ",
+                JSON.toJSONString(session.getUser()),
+                ImZkServerWorker.getInst().getLocalNodeInfo().getBalance().intValue()
+                );
+
+
+
         //增加用户的session 信息到缓存
-        //userSessionsDAO.cacheUser(uid, sessionId);
+        userSessionsDAO.cacheUser(uid, sessionId);
 
 
         /**
@@ -78,20 +95,20 @@ public class SessionManger {
             return;
         }
         LocalSession session = localSessionMap.get(sessionId);
-        String uid = session.getUser().getUserId();
+        String uid = session.getUser().getUid();
         localSessionMap.remove(sessionId);
 
 
+
         //减少用户数
-        OnlineCounter.getInst().decrement();
+        ImZkServerWorker.getInst().decrBalance();
+
         log.info("本地session减少：{},  在线总数:{} ",
-                JsonUtil.pojoToJson(session.getUser()),
-                OnlineCounter.getInst().getCurValue());
-        ImWorker.getInst().decrBalance();
+                JSON.toJSONString(session.getUser()),
+                ImZkServerWorker.getInst().getLocalNodeInfo().getBalance().intValue());
 
         //分布式保存user和所有session
         userSessionsDAO.removeUserSession(uid, sessionId);
-
 
         /**
          * 通知其他节点
@@ -107,16 +124,18 @@ public class SessionManger {
      * @param type    类型
      */
     private void notifyOtherImNode(LocalSession session, int type) {
+
         User user = session.getUser();
-        RemoteSession remoteSession = RemoteSession.builder()
-                .sessionId(session.getSessionId())
-                .imNode(WorkerRouter.getInst().getLocalNode())
-                .userId(user.getUserId())
-                .valid(true)
-                .build();
+
+        RemoteSession remoteSession = new RemoteSession(user.getUid(),session.getSessionId(),ImZkServerWorker.getInst().getServerNode());
+
         Notification<RemoteSession> notification = new Notification<RemoteSession>(remoteSession);
         notification.setType(type);
-        WorkerRouter.getInst().sendNotification(JsonUtil.pojoToJson(notification));
+
+
+        ProtoMsg.Message message = NotificationBuilder.notification(notification);
+
+        WorkerRouter.getInst().sendNotification(message);
     }
 
 
@@ -126,12 +145,15 @@ public class SessionManger {
     public List<ServerSession> getSessionsBy(String userId) {
 
         List<ServerSession> sessions = new LinkedList<>();
+
+
         UserSessions userSessions = loadFromCache(userId);
 
         if (null == userSessions) {
             return null;
         }
-        Map<String, ImNode> allSession = userSessions.getMap();
+
+        Map<String, ImServerNode> allSession = userSessions.getMap();
 
         allSession.keySet().stream().forEach(key -> {
 
@@ -165,11 +187,11 @@ public class SessionManger {
         if (null == userSessions) {
             return null;
         }
-        Map<String, ImNode> map = userSessions.getMap();
+        Map<String, ImServerNode> map = userSessions.getMap();
         map.keySet().stream().forEach(key -> {
-            ImNode node = map.get(key);
+            ImServerNode node = map.get(key);
             //当前节点直接忽略
-            if (!node.equals(ImWorker.getInst().getLocalNodeInfo())) {
+            if (!node.equals(ImZkServerWorker.getInst().getLocalNodeInfo())) {
 
                 remoteSessionMap.put(key, new RemoteSession(key, userId, node));
 
@@ -200,9 +222,10 @@ public class SessionManger {
 
 
         UserSessions finalUserSessions = new UserSessions(userId);
+
         localSessionMap.values().stream().forEach(session -> {
 
-            if (userId.equals(session.getUser().getUserId())) {
+            if (userId.equals(session.getUser().getUid())) {
                 finalUserSessions.addLocalSession(session);
             }
         });
@@ -210,7 +233,7 @@ public class SessionManger {
         remoteSessionMap.values().stream().forEach(session -> {
 
             if (userId.equals(session.getUserId())) {
-                finalUserSessions.addSession(session.getSessionId(), session.getImNode());
+                finalUserSessions.addSession(session.getSessionId(), session.getImServerNode());
             }
         });
 
@@ -240,7 +263,7 @@ public class SessionManger {
             sessionsLocalCache.put(uid, sessions);
         }
 
-        sessions.addSession(sessionId, remoteSession.getImNode());
+        sessions.addSession(sessionId, remoteSession.getImServerNode());
     }
 
     /**
@@ -266,9 +289,8 @@ public class SessionManger {
     //关闭连接
     public void closeSession(ChannelHandlerContext ctx) {
 
-        LocalSession session =
-                ctx.channel().attr(LocalSession.SESSION_KEY).get();
-
+        LocalSession  session =
+                (LocalSession) ctx.channel().attr(LocalSession.SESSION_KEY).get();
         if (null != session && session.isValid()) {
             session.close();
             this.removeLocalSession(session.getSessionId());

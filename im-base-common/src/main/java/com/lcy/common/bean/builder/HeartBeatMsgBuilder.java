@@ -2,7 +2,7 @@ package com.lcy.common.bean.builder;
 
 import com.lcy.common.bean.bo.User;
 import com.lcy.common.bean.msg.ProtoMsg;
-import com.mysql.cj.protocol.ServerSession;
+import com.lcy.common.session.ServerSession;
 
 
 /**
@@ -17,7 +17,6 @@ public class HeartBeatMsgBuilder extends BaseMsgBuilder{
 
     public HeartBeatMsgBuilder(ServerSession session) {
         super(ProtoMsg.HeadType.KEEPALIVE_REQUEST, session);
-        this.user = session.getUser();
     }
 
     public ProtoMsg.Message buildMsg() {

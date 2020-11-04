@@ -3,11 +3,11 @@ package com.lcy.server.balance;
 import com.alibaba.fastjson.JSON;
 import com.lcy.common.constant.Constant;
 import com.lcy.common.zk.ZKClient;
+import com.lcy.server.distributed.ImServerNode;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import com.lcy.server.distributed.ImServerNode;
 
 /**
  *
@@ -19,11 +19,11 @@ public class ImServerLoadBalance implements LoadBalance<ImServerNode>{
         List<ImServerNode> imServerNodes = new ArrayList<>();
         List<String> children = null;
         try {
-            children = ZKClient.instance.getClient().getChildren().forPath(zkPath);
+            children =  ZKClient.getIns().getClient().getChildren().forPath(zkPath);
             for (String child : children) {
                 //处理数据
                 try {
-                    byte[] imServerBytes = ZKClient.instance.getClient().getData().forPath(child);
+                    byte[] imServerBytes =  ZKClient.getIns().getClient().getData().forPath(child);
 
                     if(imServerBytes != null && imServerBytes.length > 0){
                         imServerNodes.add(JSON.parseObject(imServerBytes,ImServerNode.class));

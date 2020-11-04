@@ -54,7 +54,7 @@ message MessageResponse {
 } 
  /*通知消息*/
 message MessageNotification { 
- uint32 msgType = 1; 	//通知类型 1 上线 2 下线 ...
+ uint32 msgType = 1; 	//通知类型 1 上线 2 下线 3 节点连接成功
  bytes sender = 2; 
  string json = 3; 
  string timestamp = 4; 

@@ -1,0 +1,15 @@
+#session的相关配置
+spring:
+  session:
+    redis:
+      namespace: gedu:item:pool:spring:session
+    timeout: 3600
+#c相关配置
+swagger2:
+  basePackage: com.pxjy.item.pool
+  title: 题库后台API接口文档
+  version: 1.0
+  description: 后台API接口
+  contact: pxjy
+
+

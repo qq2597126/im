@@ -2,16 +2,14 @@ package com.lcy.server.distributed.zk;
 
 import com.alibaba.fastjson.JSON;
 import com.lcy.common.constant.Constant;
+import com.lcy.common.utils.StringUtils;
+import com.lcy.common.zk.ZKClient;
 import com.lcy.server.distributed.ImServerNode;
 import com.lcy.server.distributed.ServerManager;
 import com.lcy.server.distributed.WorkerReSender;
-import com.lcy.common.zk.ZKClient;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.recipes.cache.ChildData;
-import org.apache.curator.framework.recipes.cache.TreeCache;
-import org.apache.curator.framework.recipes.cache.TreeCacheEvent;
-import org.apache.curator.framework.recipes.cache.TreeCacheListener;
+import org.apache.curator.framework.recipes.cache.*;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -36,7 +34,7 @@ public class ImZkServerManager implements ServerManager<WorkerReSender> {
     }
 
     @Override
-    public ConcurrentMap getWorkerReSenderMap() {
+    public ConcurrentMap<Long,WorkerReSender> getWorkerReSenderMap() {
         return workerReSenderMap;
     }
 
@@ -44,33 +42,37 @@ public class ImZkServerManager implements ServerManager<WorkerReSender> {
     public void init(){
         try {
             //监听节点的新增和删除
-            TreeCache treeCache = new TreeCache(ZKClient.instance.getClient(), Constant.ImServerConstants.MANAGE_PATH);
-            TreeCacheListener treeCacheListener = new TreeCacheListener() {
+            PathChildrenCache childrenCache  = new PathChildrenCache(ZKClient.getIns().getClient(), Constant.ImServerConstants.MANAGE_PATH,true);
+
+            PathChildrenCacheListener childrenCacheListener = new PathChildrenCacheListener() {
+
                 @Override
-                public void childEvent(CuratorFramework curatorFramework, TreeCacheEvent treeCacheEvent) throws Exception {
-                    TreeCacheEvent.Type type = treeCacheEvent.getType();
-                    ChildData eventData = treeCacheEvent.getData();
-                    log.info("im 节点 相关操作："+type.name());
-                    if(eventData != null){
-                        switch (type){
-                            case NODE_ADDED:
-                                //添加相关操作
-                                processNodeAdded(eventData);
-                                break;
-                            case NODE_REMOVED:
-                                //删除相关操作
-                                processNodeRemoved(eventData);
-                                break;
-                            default:
-                                break;
-                        }
-                    }else {
-                        log.info("节点数据为空");
+                public void childEvent(CuratorFramework client,
+                                       PathChildrenCacheEvent event) throws Exception {
+
+                    log.info("开始监听其他的ImWorker子节点:-----");
+                    ChildData data = event.getData();
+                    switch (event.getType()) {
+                        case CHILD_ADDED:
+                            log.info("CHILD_ADDED : " + data.getPath() + "  数据:" + new String(data.getData()));
+                            processNodeAdded(data);
+                            break;
+                        case CHILD_REMOVED:
+                            log.info("CHILD_REMOVED : " + data.getPath() + "  数据:" + new String(data.getData()));
+                            processNodeRemoved(data);
+                            break;
+                        case CHILD_UPDATED:
+                            log.info("CHILD_UPDATED : " + data.getPath() + "  数据:" + new String(data.getData()));
+                            break;
+                        default:
+                            log.debug("[PathChildrenCache]节点数据为空, path={}", data == null ? "null" : data.getPath());
+                            break;
                     }
+
                 }
             };
-            treeCache.getListenable().addListener(treeCacheListener);
-            treeCache.start();
+            childrenCache.getListenable().addListener(childrenCacheListener);
+            childrenCache.start(PathChildrenCache.StartMode.POST_INITIALIZED_EVENT);
         } catch (Exception e) {
             log.error("初始化 节点监听器失败");
             e.printStackTrace();
@@ -82,20 +84,40 @@ public class ImZkServerManager implements ServerManager<WorkerReSender> {
      * @param data
      */
     public void processNodeAdded(ChildData data) {
-        log.info("[TreeCache]节点更新端口, path={}, data={}", data.getPath(), data.getData());
-        byte[] serverNodeByte = data.getData();
+        byte[] payload = data.getData();
         String path = data.getPath();
-        ImServerNode imServerNode = JSON.parseObject(serverNodeByte,ImServerNode.class);
-        long nodeId = imServerNode.getId();
-        WorkerReSender workerReSender = workerReSenderMap.get(nodeId);
-        if(workerReSender != null && workerReSender.getRemoteNode().equals(imServerNode)){
+
+        ImServerNode imServerNode = JSON.parseObject(payload,ImServerNode.class);
+        imServerNode.setId(StringUtils.getIdByPath(path));
+
+
+        log.info("[TreeCache]节点更新端口, path={}, data={}",
+                data.getPath(), JSON.toJSONString(imServerNode));
+
+        if(imServerNode.equals(ImZkServerWorker.getInst().getServerNode()))
+        {
+            log.info("[TreeCache]本地节点, path={}, data={}",
+                    data.getPath(), JSON.toJSONString(imServerNode));
             return;
         }
+        WorkerReSender workerReSender = workerReSenderMap.get(imServerNode.getId());
+        //重复收到注册的事件
+        if (null != workerReSender && workerReSender.getRemoteNode().equals(imServerNode)) {
 
-        WorkerReSender reSender = new WorkerReSender(imServerNode);
-        //建立连接
-        reSender.doConnect();
-        workerReSenderMap.put(nodeId,workerReSender);
+            log.info("[TreeCache]节点重复增加, path={}, data={}",
+                    data.getPath(), JSON.toJSONString(imServerNode));
+            return;
+        }
+        if (null != workerReSender) {
+            //关闭老的连接
+            workerReSender.stopConnecting();
+        }
+        //创建一个消息转发器
+        workerReSender = new WorkerReSender(imServerNode);
+        //建立转发的连接
+        workerReSender.doConnect();
+
+        workerReSenderMap.put(imServerNode.getId(), workerReSender);
     }
 
     public void processNodeRemoved(ChildData data) {
@@ -103,8 +125,9 @@ public class ImZkServerManager implements ServerManager<WorkerReSender> {
         byte[] serverNodeByte = data.getData();
         String path = data.getPath();
         ImServerNode imServerNode = JSON.parseObject(serverNodeByte,ImServerNode.class);
-        long nodeId = imServerNode.getId();
-        WorkerReSender workerReSender = workerReSenderMap.get(nodeId);
+        imServerNode.setId(StringUtils.getIdByPath(path));
+
+        WorkerReSender workerReSender = workerReSenderMap.get(imServerNode.getId());
 
         log.info("[TreeCache]节点删除, path={}, data={}",
                 data.getPath(),imServerNode.toString());
@@ -112,7 +135,18 @@ public class ImZkServerManager implements ServerManager<WorkerReSender> {
 
         if (null != workerReSender) {
             workerReSender.stopConnecting();
-            workerReSenderMap.remove(nodeId);
+            workerReSenderMap.remove(imServerNode.getId());
+        }
+    }
+
+    public void addWorkerReSender(WorkerReSender workerReSender){
+
+        WorkerReSender sender = workerReSenderMap.get(workerReSender.getRemoteNode().getId());
+
+        if(sender == null || sender.getRemoteNode().equals(workerReSender.getRemoteNode())){
+            workerReSenderMap.put(workerReSender.getRemoteNode().getId(), workerReSender);
+        }else {
+            log.info("重复添加服务转发器");
         }
     }
 

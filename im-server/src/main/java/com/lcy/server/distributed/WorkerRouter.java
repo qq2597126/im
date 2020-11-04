@@ -58,10 +58,10 @@ public class WorkerRouter {
 
     //根据消息类型 进行 消息转发
 
-    public void sendNotification(String json) {
+    public void sendNotification(Object data) {
         serverManager.getWorkerReSenderMap().forEach((key, workerReSender) -> {
             if (!key.equals(serverWorker.getServerId())) {
-                workerReSender.writeAndFlush(json);
+                workerReSender.writeAndFlush(data);
             }
         });
 

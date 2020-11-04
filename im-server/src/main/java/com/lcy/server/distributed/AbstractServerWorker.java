@@ -17,4 +17,12 @@ public  abstract class AbstractServerWorker implements ServerWorker{
     public ImServerNode getLocalNodeInfo() {
         return serverNode;
     }
+
+    public ImServerNode getServerNode() {
+        return serverNode;
+    }
+
+    public void setServerNode(ImServerNode serverNode) {
+        this.serverNode = serverNode;
+    }
 }

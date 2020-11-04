@@ -20,7 +20,7 @@ public class ImServerNode implements Comparable<ImServerNode>, Serializable {
     /**
      * 当前服务连接的数量
      */
-    private AtomicInteger balance;
+    private AtomicInteger balance = new AtomicInteger(0);
 
     /**
      * 当前地址
@@ -49,8 +49,7 @@ public class ImServerNode implements Comparable<ImServerNode>, Serializable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         ImServerNode that = (ImServerNode) o;
-        return id == that.id &&
-                Objects.equals(host, that.host) &&
+        return Objects.equals(host, that.host) &&
                 Objects.equals(port, that.port);
     }
 

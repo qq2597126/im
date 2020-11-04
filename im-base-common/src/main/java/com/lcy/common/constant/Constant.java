@@ -30,20 +30,20 @@ public final class Constant {
                 AttributeKey.valueOf("CHANNEL_NAME");
 
 
-
         // 服务器节点的相关信息
         public static final String MANAGE_PATH = "/im/nodes";
 
         //服务器节点
         public static final String PATH_PREFIX =  MANAGE_PATH + "/seq-";
 
-        //统计用户数的znode
-        public static final String COUNTER_PATH = "/im/OnlineCounter";
-
+        //统计用户数
         public static final String WEB_URL = "http://localhost:8080";
 
-
-
-
     }
+
+    public final static class RedisConstants{
+        public static final String REDIS_ONLINE_COUNTER = "onlineCounter";
+    }
+
+
 }

@@ -23,7 +23,6 @@ public class CallbackTaskScheduler extends Thread {
     private ExecutorService pool  =  new ThreadPoolExecutor(corePoolSize,corePoolSize,0, TimeUnit.SECONDS,new LinkedBlockingQueue<>());
 
 
-
     ListeningExecutorService gPool = MoreExecutors.listeningDecorator(pool);
 
     private static CallbackTaskScheduler taskScheduler = new CallbackTaskScheduler();
@@ -34,7 +33,7 @@ public class CallbackTaskScheduler extends Thread {
     private int sleepTime = 200;
 
     private CallbackTaskScheduler(){
-
+        this.start();
     }
 
     public static void add(CallbackTask callbackTask){

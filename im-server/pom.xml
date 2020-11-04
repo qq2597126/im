@@ -27,7 +27,19 @@
             <artifactId>im-base-common</artifactId>
             <version>${im.base.common.version}</version>
         </dependency>
-
-
     </dependencies>
+
+    <!--设置主入口-->
+    <build>
+        <finalName>im-server</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.lcy.server.startup.StartUpApplication</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

@@ -1,7 +1,14 @@
 package com.lcy.server.distributed;
 
 
+import com.lcy.common.bean.msg.Notification;
+import com.lcy.common.bean.msg.ProtoMsg;
+import com.lcy.common.codec.ProtobufDecoder;
 import com.lcy.common.codec.ProtobufEncoder;
+import com.lcy.server.builder.NotificationBuilder;
+import com.lcy.server.distributed.zk.ImZkServerWorker;
+import com.lcy.server.handler.ImNodeExceptionHandler;
+import com.lcy.server.handler.ImNodeHeartBeatClientHandler;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.*;
@@ -56,9 +63,22 @@ public class WorkerReSender {
         if(channelFuture.isSuccess()){
             //连接成功
             connectedFlag = true;
-            log.info("分布式IM节点连接成功:", remoteNode.toString());
+            log.info("当前节点上线，成功连接其他节点： {}",remoteNode.toString());
+
+            channel = channelFuture.channel();
+
             //连接成功添加关闭监听器
-            channelFuture.channel().closeFuture().addListener(closeListener);
+            channel.closeFuture().addListener(closeListener);
+
+            //发送连接通知
+            /**
+             * 发送链接成功的通知
+             */
+            Notification<ImServerNode> notification = new Notification<>(ImZkServerWorker.getInst().getLocalNodeInfo());
+            notification.setType(Notification.CONNECT_FINISHED);
+            ProtoMsg.Message pkg = NotificationBuilder.notification(notification);
+            writeAndFlush(pkg);
+
         }else{
             //连接失败
             loopGroup.schedule(() -> WorkerReSender.this.doConnect(), 10, TimeUnit.SECONDS);
@@ -75,6 +95,12 @@ public class WorkerReSender {
 
     }
 
+    public WorkerReSender(Channel channel, ImServerNode remoteNode,boolean connectedFlag) {
+        this.channel = channel;
+        this.remoteNode = remoteNode;
+        this.connectedFlag = connectedFlag;
+    }
+
     //连接
     public void doConnect(){
         if(bootstrap != null && bootstrap.group() == null){
@@ -88,13 +114,18 @@ public class WorkerReSender {
             bootstrap.handler(new ChannelInitializer<SocketChannel>() {
                 @Override
                 protected void initChannel(SocketChannel socketChannel) throws Exception {
-                    socketChannel.pipeline().addLast(new ProtobufEncoder() );
+                    socketChannel.pipeline().addLast("decoder", new ProtobufDecoder());
+                    socketChannel.pipeline().addLast("encoder", new ProtobufEncoder());
+                    socketChannel.pipeline().addLast("imNodeHeartBeatClientHandler",new ImNodeHeartBeatClientHandler());
+                    socketChannel.pipeline().addLast("exceptionHandler",new ImNodeExceptionHandler());
                 }
             });
             log.info(new Date() +"开始连接分布式节点："+remoteNode.getHost());
             ChannelFuture channelFuture = bootstrap.connect();
             //添加连接监听器
             channelFuture.addListener(connectedListener);
+
+
         }else if (bootstrap.group() != null) {
             log.info(new Date() + "再一次开始连接分布式节点", remoteNode.toString());
             ChannelFuture channelFuture = bootstrap.connect();
@@ -105,7 +136,9 @@ public class WorkerReSender {
     //关闭连接
     public void stopConnecting() {
         channel = null;
-        loopGroup.shutdownGracefully();
+        if(loopGroup != null){
+            loopGroup.shutdownGracefully();
+        }
         connectedFlag = false;
     }
     /**

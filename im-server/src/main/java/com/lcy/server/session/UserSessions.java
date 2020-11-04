@@ -2,14 +2,15 @@ package com.lcy.server.session;
 
 import com.lcy.server.distributed.ImServerNode;
 import com.lcy.server.distributed.zk.ImZkServerWorker;
+import lombok.Data;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+@Data
 public class UserSessions {
+
     private String userId;
-
-
     private Map<String, ImServerNode> map = new LinkedHashMap<>(10);
 
     public UserSessions(String userId) {

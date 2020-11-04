@@ -1,6 +1,7 @@
 package com.lcy.server.session;
 
 import com.lcy.common.bean.bo.User;
+import com.lcy.common.session.ServerSession;
 import com.lcy.common.utils.SessionUtils;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -20,7 +21,7 @@ public class LocalSession implements ServerSession {
     public static final AttributeKey<String> KEY_USER_ID =
             AttributeKey.valueOf("key_user_id");
 
-    public static final AttributeKey<ServerSession> SESSION_KEY =
+    public static final AttributeKey<LocalSession> SESSION_KEY =
             AttributeKey.valueOf("SESSION_KEY");
 
 
@@ -57,11 +58,13 @@ public class LocalSession implements ServerSession {
         this.sessionId = SessionUtils.createSessionId();
     }
     //反向导航
-    public static ServerSession getSession(ChannelHandlerContext ctx) {
+    public static LocalSession getSession(ChannelHandlerContext ctx) {
         Channel channel = ctx.channel();
-        ServerSession serverSession = channel.attr(SESSION_KEY).get();
+        LocalSession serverSession = channel.attr(SESSION_KEY).get();
         return serverSession;
     }
+
+
 
     //关闭连接
     public synchronized void close() {
@@ -78,12 +81,20 @@ public class LocalSession implements ServerSession {
     }
 
     //和通道实现双向绑定
-    public ServerSession bind() {
+    public LocalSession bind() {
         log.info(" ServerSession绑定会话 " + channel.remoteAddress());
         channel.attr(SESSION_KEY).set(this);
         isLogin = true;
         return this;
     }
+
+    public LocalSession unbind() {
+        isLogin = false;
+        SessionManger.inst().removeLocalSession(getSessionId());
+        this.close();
+        return this;
+    }
+
 
     //写Protobuf数据帧
     public synchronized void writeAndClose(Object pkg) {
